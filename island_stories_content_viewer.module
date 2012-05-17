@@ -1,0 +1,99 @@
+<?php
+
+// $Id$
+
+/**
+ * @file
+ * Configuration module for islandora_solr_search.module
+ */
+
+function island_stories_content_viewer_menu() {
+
+    $items = array();
+
+
+    $items['island_stories_viewer'] = array(
+        'title' => t('Island Stories Content Viewer'),
+       	'page callback' => 'island_stories_content_viewer_view',        
+        'type' => MENU_CALLBACK,
+        'access arguments' => array('view fedora collection')
+    );
+    return $items;
+}
+
+//build our own custom view with meta data
+function island_stories_content_viewer_view($PID,$model) {
+    $ouput = "";
+    
+    if($PID) {
+        if(strpos($model, "DualResImage")) {
+            module_load_include('inc', 'island_stories_content_viewer', 'island_stories_content_viewer_image_process');
+            $image_viewer = new DisplayImageStreams($PID);    
+            $image_metadata = "";
+            $ouput = $image_viewer->showMediumSize(); 
+            
+        }
+        elseif(strpos($model, "mapCModel")){
+            //this needs more work
+            //$ouput = "Viewer not setup for maps";
+            drupal_goto($_SERVER['HOST']."fedora/repository/$PID");
+            
+        }
+        elseif(strpos($model, "audioCModel")){
+            module_load_include('inc', 'island_stories_content_viewer', 'island_stories_content_viewer_audio_sp');
+            $audio_viewer = new SWFAudioPlayer($PID);
+            //$audio_metadata = new Exiftool($PID);
+            $ouput = $audio_viewer->showMP3();
+        }
+        elseif(strpos($model, "bookCModel")){
+            //use pds for now
+            //module_load_include('inc', 'islandora_book', 'book');
+            //$book_viewer = new IslandoraBook($PID);
+            //theme('tabset', $book_viewer->showFieldSets())
+            //$book_metadata = "";
+            $ouput = "Viewer not setup for books";
+            
+        }
+        elseif(strpos($model, "slideCModel")){
+            //module_load_include('inc', 'islandora_content_viewer', 'islandora_content_viewer_large_image');
+            //$large_image_viewer = new ShowLargeImagesInFieldSets($PID);
+            //$large_image_metadata = "";
+            //$ouput = $large_image_viewer->showJP2();
+            $ouput = "Viewer not setup for large images";
+        }
+        elseif(strpos($model, "strict_pdf")){
+            //module_load_include('inc', 'islandora_pdf_sp', 'image_process');
+            //$pdf_viewer = "";
+            //$pdf_metadata = "";
+            $ouput = "Viewer not setup for pdfs";
+        }
+        
+        
+        
+        
+        
+        
+        //module_load_include('inc', 'islandora_large_image_sp', 'large_image');
+        
+
+        
+
+        
+
+        
+
+        
+
+
+
+        
+        //$metadata->displayMetadata(); something not right on this line
+
+        return $ouput;
+    }
+    else {
+        return "No PID provided";
+    }
+    
+    
+}
