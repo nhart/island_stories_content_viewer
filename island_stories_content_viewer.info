@@ -1,11 +1,9 @@
 ; $Id$ 
 name = Island Stories Content Viewer
 description = Allows content to viewed in the Island Stories context
-dependencies[] = islandora_audio_sp
-dependencies[] = islandora_book
-dependencies[] = islandora_image_sp
-dependencies[] = islandora_large_image_sp
-dependencies[] = islandora_pdf_sp
-package = Islandora
+dependencies[] = swftools
+dependencies[] = swftools_jw5
+dependencies[] = swftools_swfobject2
+package = Island Stories
 version = 6.1dev
 core = 6.x

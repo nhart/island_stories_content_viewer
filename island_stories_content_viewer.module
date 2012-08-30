@@ -22,78 +22,385 @@ function island_stories_content_viewer_menu() {
 }
 
 //build our own custom view with meta data
-function island_stories_content_viewer_view($PID,$model) {
-    $ouput = "";
+function island_stories_content_viewer_view($PID, $city = NULL) {
     
+    //add breadcrumbs here
+    
+    $fedora_url = variable_get('fedora_base_url','http://localhost:8080/fedora');
+
     if($PID) {
-        if(strpos($model, "DualResImage")) {
-            module_load_include('inc', 'island_stories_content_viewer', 'island_stories_content_viewer_image_process');
-            $image_viewer = new DisplayImageStreams($PID);    
-            $image_metadata = "";
-            $ouput = $image_viewer->showMediumSize(); 
+        drupal_set_html_head('<meta property="og:image" content="'. $fedora_url ."/objects/$PID/datastreams/TN/content" .'" />');
+        module_load_include('inc', 'fedora_repository', 'ObjectHelper');
+        $objectHelper = new ObjectHelper;
+
+        //$rels_xml = $objectHelper->getStream($PID, 'RELS-EXT'); //use for getting CM
+        $mods_xml = $objectHelper->getStream($PID, 'MODS');
+        $mods = simplexml_load_string($mods_xml);
+
+        
+        $title = $mods->titleInfo[0]->title[0];
+        $typeOfResource = $mods->typeOfResource[0];
+        $pid_expanded = explode(":", $PID);
+        $name_space = $pid_expanded[0];
+        global $base_url;
+    
+    
+        // Build Breadcrumbs
+        $breadcrumb = array();
+        $breadcrumb[] = l('Home', '<front>');
+        $breadcrumb[] = l('Communities', "$base_url/communities/");
+        if($city) {
+            $breadcrumb[] = l($city, "$base_url/communities/$city");
+        }
+        // Set Breadcrumbs
+        drupal_set_breadcrumb($breadcrumb);
+    
+    
+        drupal_set_title($title);
+        $output = "";
+        
+        if($typeOfResource == "text") {
+            $ds = "OBJ";
+            if($name_space == "ilives") {
+               //$ds = "PDF";
+               $viewer_url = "$fedora_url/objects/$PID/methods/ilives:viewerSdef/getViewer";
+               $output .= '<iframe src="' . $viewer_url . '" frameborder="0" style="width: 100%; height: 800px;">Errors: unable to load viewer</iframe>';
+            }
+            else {
+                $output .= "<iframe src=\"http://docs.google.com/viewer?url=$fedora_url/objects/$PID/datastreams/$ds/content&embedded=TRUE\" style=\"width:600px; height:500px;\" frameborder\0\"></iframe>";
+            }
+            
             
         }
-        elseif(strpos($model, "mapCModel")){
-            //this needs more work
-            //$ouput = "Viewer not setup for maps";
-            drupal_goto($_SERVER['HOST']."fedora/repository/$PID");
+        elseif($typeOfResource == "cartographic") {
+            $ds = "JPG";
+            if($name_space == "imagined") {
+               $viewer_url = "$fedora_url/objects/$PID/methods/ilives:viewerSdef/getViewer";
+               $output .= '<iframe src="' . $viewer_url . '" frameborder="0" style="width: 100%; height: 800px;">Errors: unable to load viewer</iframe>';
+            }
+            else {
+                $output .= "<img src =\"$fedora_url/objects/$PID/datastreams/$ds/content\" />";
+            }
+        }
+        elseif($typeOfResource == "still image") {
+            $ds = "JPG";
+            if($name_space == "cap") {
+                $ds = "MEDIUM_SIZE";
+            }
+            $output .= "<img src =\"$fedora_url/objects/$PID/datastreams/$ds/content\" />";
+        }
+            
+        elseif($typeOfResource == "three dimensional object") {
+            
+            if($name_space == "herbarium") {
+                $viewer_url = "$fedora_url/objects/$PID/methods/ilives:viewerSdef/getViewer";
+               $output .= '<iframe src="' . $viewer_url . '" frameborder="0" style="width: 100%; height: 800px;">Errors: unable to load viewer</iframe>';
+            }
+            else {
+                $output .= "Viewer not configured";
+            }
             
         }
-        elseif(strpos($model, "audioCModel")){
-            module_load_include('inc', 'island_stories_content_viewer', 'island_stories_content_viewer_audio_sp');
-            $audio_viewer = new SWFAudioPlayer($PID);
-            //$audio_metadata = new Exiftool($PID);
-            $ouput = $audio_viewer->showMP3();
-        }
-        elseif(strpos($model, "bookCModel")){
-            //use pds for now
-            //module_load_include('inc', 'islandora_book', 'book');
-            //$book_viewer = new IslandoraBook($PID);
-            //theme('tabset', $book_viewer->showFieldSets())
-            //$book_metadata = "";
-            $ouput = "Viewer not setup for books";
+        elseif($typeOfResource == "sound recording-musical" || $typeOfResource == "sound recording-nonmusical") {
+            if($name_space == "ivoices") {
+                $ds = "PROXY_MP3";
+            }
+            else {
+                $ds = "OBJ";
+            }
+           
+            $swfURL = $base_url . "/fedora/repository/$PID/PROXY_MP3/MP3.mp3";
+            $swfImageURL = $base_url . "/fedora/repository/$PID/TN/tn.jpg";
+            $pathTojs = "/sites/all/libraries/mediaplayer4/jwplayer.js";
+            drupal_add_js("$pathTojs");
             
+            $output .= '<video id="flashContent"><a href="http://www.macromedia.com/go/getflashplayer">Get the Flash Player</a> to see this player.</video>';
+            $output .= '<div id="dl_link"><a href="' . $swfURL . '">Download MP3</a></div>';
+            
+            $js_string = <<<ENDJS
+                var swfVersionStr = "10.0.0";
+                var flashvars = { file:escape("$swfURL"),image:escape("$swfImageURL"),autostart:'FALSE' };
+                var params = { allowfullscreen:'FALSE', allowscriptaccess:'FALSE' };
+                var attributes = { id:'AudioViewer', name:'AudioViewer' };
+                swfobject.embedSWF('/sites/all/libraries/mediaplayer4/player.swf','flashContent','400','200','9.0.115','FALSE',flashvars, params, attributes);
+                swfobject.createCSS("#flashContent", "display:block;text-align:left;");
+ENDJS;
+                drupal_add_js($js_string, 'inline', 'header');
         }
-        elseif(strpos($model, "slideCModel")){
-            //module_load_include('inc', 'islandora_content_viewer', 'islandora_content_viewer_large_image');
-            //$large_image_viewer = new ShowLargeImagesInFieldSets($PID);
-            //$large_image_metadata = "";
-            //$ouput = $large_image_viewer->showJP2();
-            $ouput = "Viewer not setup for large images";
+        elseif($typeOfResource == "moving image") {
+            $output .= "Viewer not configured for video";
         }
-        elseif(strpos($model, "strict_pdf")){
-            //module_load_include('inc', 'islandora_pdf_sp', 'image_process');
-            //$pdf_viewer = "";
-            //$pdf_metadata = "";
-            $ouput = "Viewer not setup for pdfs";
+        else {
+            $output .= "Can't determine type of resource";
         }
-        
-        
-        
-        
-        
-        
-        //module_load_include('inc', 'islandora_large_image_sp', 'large_image');
-        
-
-        
-
-        
-
-        
-
-        
-
-
-
-        
-        //$metadata->displayMetadata(); something not right on this line
-
-        return $ouput;
+        $output .= meta_data_view($PID);
+        return $output;
     }
     else {
         return "No PID provided";
     }
     
+    
+}
+
+function meta_data_view($PID) {
+    if($PID) {
+        
+        module_load_include('inc', 'fedora_repository', 'ObjectHelper');
+        $objectHelper = new ObjectHelper;
+
+        $mods_xml = $objectHelper->getStream($PID, 'MODS');
+        $mods = simplexml_load_string($mods_xml);
+
+        $title = $mods->titleInfo[0]->title[0];
+        $typeOfResource = $mods->typeOfResource[0];
+        $pid_expanded = explode(":", $PID);
+        $name_space = $pid_expanded[0];
+        
+        /*
+         * Title
+         * Community mods.city
+         * Region mods.region
+         * County mods.county
+         * Coordinates mods.coordinates
+         */
+        
+        foreach($mods->subject as $subject) {
+            if($subject->cartographics) {
+                $coordinates = $subject->cartographics[0]->coordinates[0];
+            }
+            if($subject->hierarchicalGeographic) {
+
+                $country = $subject->hierarchicalGeographic->country[0];
+                $province = $subject->hierarchicalGeographic[0]->province[0];
+                $county = $subject->hierarchicalGeographic[0]->county[0];
+                $region = $subject->hierarchicalGeographic[0]->region[0];
+                $city = $subject->hierarchicalGeographic[0]->city[0];
+            }
+        }
+
+
+        $output = "";
+        //$output .= "<div>metadata view title.....</div>";
+        $metadata = array();
+        
+        $metadata[] = array("Title",$title);
+        $metadata[] = array("Community",$city);
+        $metadata[] = array("Region",$region);
+        $metadata[] = array("County",$county);
+        $metadata[] = array("Coordinates",$coordinates);
+        
+        //http://www.islandvoices.ca/interviews/detailview/ivoices:ivoices20100622acass002
+    //http://www.islandlives.ca/fedora/ilives_book_viewer/ilives%3A249424
+    //http://vre2.upei.ca/craipe/fedora/repository/craipe:175.8
+    //http://vre2.upei.ca/cap/fedora/repository/cap:2037
+    //http://vre2.upei.ca/herbarium/fedora/repository/herbarium:02273
+    //http://www.islandimagined.ca/fedora/repository/imagined:208990
+    //http://islandstories.ca/island_stories_viewer/imagined:208990
+    
+    
+    // "Taken from IslandVoices, IslandLives, Centre de recherche acadien de l’Île-du-Prince-Édouard, 
+    //Herbarium Specimen Collection, Telling Island Stories, IslandNarratives"
+        if ($name_space == "ivoices") {
+        $site_title = "IslandVoices";
+        $site_url = "http://www.islandvoices.ca/interviews/detailview/".$PID;
+    }
+    elseif ($name_space == "ilives") {
+        $site_title = "IslandLives";        
+        $site_url = "http://www.islandlives.ca/fedora/ilives_book_viewer/".$PID;
+    }
+    elseif ($name_space == "craipe") {
+        $site_title = "Centre de recherche acadien de l’Île-du-Prince-Édouar";        
+        $site_url = "http://vre2.upei.ca/craipe/fedora/repository/".$PID;
+    }
+    elseif ($name_space == "cap") {
+        $site_title = "IslandNarratives";        
+        $site_url = "http://vre2.upei.ca/cap/fedora/repository/".$PID;
+    }
+    elseif ($name_space == "herbarium") {
+        $site_title = "Herbarium Specimen Collection";        
+        $site_url = "http://vre2.upei.ca/herbarium/fedora/repository/".$PID;
+    }
+    elseif ($name_space == "imagined") {
+        $site_title = "IslandImagined";        
+        $site_url = "http://www.islandimagined.ca/fedora/repository/".$PID;
+    }
+    elseif ($name_space == "istories") {
+        //not really needed
+    }
+    
+if($site_title && $site_url) {
+	    	$metadata[] = array("Taken from",l("$site_title", $site_url,array('attributes' => array('target' => '_blank'))));
+}
+
+    	
+
+
+        
+        
+        /*
+        
+        foreach($mods->subject as $subject) {
+                if($subject->topic) {
+                    $topic = $subject->topic[0];
+                }
+            }
+   
+    
+        
+        $metadata[] = array("Title",$title);
+        
+        
+        $metadata[] = array("Subject",$topic);
+        
+        $title = $mods->titleInfo[0]->title[0];
+        $metadata[] = array("Relation","");
+        
+        $title = $mods->titleInfo[0]->title[0];
+        $metadata[] = array("Language","");
+        
+        $title = $mods->titleInfo[0]->title[0];
+        $metadata[] = array("Right","");
+        
+        $title = $mods->titleInfo[0]->title[0];
+        $metadata[] = array("Coverage","");
+
+        /*
+         * 
+         * title	Blue Whale: Bones	
+subject	Education	
+description	This picture was taken in Norway, Tignish while members from the University of British Columbia came to unearth PEI's very own 26 m female blue whale that washed ashore in 1987; as the main attraction to their new Beaty Biodiversity Museum. This picture shows some of the bones after they were taken out of the ground, along with one of the containers in the background that some of the bones were stored in.	
+relation	Tignish Collection	
+language	English	
+rights	INP General Standards of Consent	
+type	StillImage	
+coverage	North America--Canada--Lot 1--Prince--Tignish	
+coverage	47.041367, -64.013397
+         * 
+         
+        //add all common stuff here
+
+        
+        if($typeOfResource == "text") {
+            //add more specific things here
+        }
+        elseif($typeOfResource == "cartographic") {
+            $date = $mods->originInfo[0]->dateCreated;
+            $metadata[] = array("Date Created:",$date);
+            $name = $mods->name[0]->namePart;
+            $role = $mods->name[0]->role[0]->roleTerm[0];
+            $metadata[] = array("Name:","$name<br />$role");
+            $abstract = $mods->abstract[0];
+            $metadata[] = array("Abstract:",$abstract);
+            $identifier = $mods->identifier[0];
+            $metadata[] = array("Identifier:",$identifier);
+            $marcform = $mods->physicalDescription[0]->form[0];
+            $extent = $mods->physicalDescription[0]->extent[0];
+            $phy_note = $mods->physicalDescription[0]->note[0];
+            $notes = $mods->note;
+            $mods_note = "";
+            foreach ($notes as $note) {
+                if($note->attributes()->type == "details") {
+                    $mods_note .= "$note <br />";
+                }
+            }
+            $topics = "";
+            foreach($mods->subject as $subject) {
+                if($subject->cartographics) {
+                    $scale = $subject->cartographics[0]->scale[0];
+                    $coordinates = $subject->cartographics[0]->coordinates[0];
+                }
+                if($subject->hierarchicalGeographic) {
+
+                    $country = $subject->hierarchicalGeographic->country[0];
+                    $province = $subject->hierarchicalGeographic[0]->province[0];
+                    $county = $subject->hierarchicalGeographic[0]->county[0];
+                    $region = $subject->hierarchicalGeographic[0]->region[0];
+                    $city = $subject->hierarchicalGeographic[0]->city[0];
+                }
+
+                if($subject->attributes()->authority == "paro") {
+                    foreach($subject->topic as $topic) {
+                        $topics .= "$topic<br />";
+                    }
+                }
+            }
+
+            $metadata[] = array("Physical Description:","$extent<br />$marcform<br />$phy_note<br />$mods_note $scale<br />$coordinates");
+            $metadata[] = array("Topic(s):",$topics);
+
+            $metadata[] = array("Country:",$country);
+            $metadata[] = array("Province:",$province);
+            $metadata[] = array("County:",$county);
+            $metadata[] = array("Region/Lot:",$region);
+            $metadata[] = array("City:",$city);
+
+
+            foreach($mods->accessCondition as $access) {
+                if($access->attributes()->type == "useAndReproduction") {
+                    $use = $access;
+                }
+                if($access->attributes()->type == "restrictionOnAccess") {
+                    $access = $access;
+                }
+            }
+
+            $metadata[] = array("Use and Reproduction:",$use);
+            $metadata[] = array("Restrictions on Access:",$access);
+            $physical_location = $mods->location[0]->physicalLocation[0];
+            $metadata[] = array("Physical Location:",$physical_location);
+        }
+        elseif($typeOfResource == "still image") {
+            
+        }
+        elseif($typeOfResource == "three dimensional object") {
+
+        }
+        elseif($typeOfResource == "sound recording-musical" || $typeOfResource == "sound recording-nonmusical") {
+            if($name_space == "ivoices") {
+                $pb_xml = $objectHelper->getStream($PID, 'PBCORE');
+                $pbcore = simplexml_load_string($pb_xml);
+                
+                $media = $pbcore->pbcoreInstantiation[0]->instantiationMediaType;
+                $rights = $pbcore->pbcoreRightsSummary[0]->rightsSummary;
+                $segments = $pbcore->pbcoreDescription[1];
+                $segments = preg_replace('[/\W/|\s+]', ' ', $segments);
+                $segments = preg_replace('/ SIDE/', "<br />SIDE", $segments);
+                $segments = preg_replace('/\|/', "<br />", $segments);
+                $segments = preg_replace('/\n{3}/', "\n\n", $segments);
+                $interviewee = $pbcore->pbcoreContributor[0]->contributor;
+                $abstract = $pbcore->pbcoreDescription[0];
+                $duration = $pbcore->pbcoreInstantiation[1]->instantiationDuration;
+                $dates = $pbcore->pbcoreInstantiation[0]->instantiationDate;
+                foreach ($pbcore->pbcoreCoverage as $coverage) {
+                    if ($coverage->coverageType == 'Temporal') {
+                      $times = $coverage->coverage;
+                    }
+                    if ($coverage->coverageType == 'Spatial') {
+                      $places = $coverage->coverage;
+                    }
+                }
+                
+                $metadata[] = array("Interviewee(s):",$interviewee[0]);
+                $metadata[] = array("Playing Time:",$duration[0]);
+                $metadata[] = array("Interview Date(s):",$dates[0]);
+                $metadata[] = array("Interview Summary:",$abstract);
+                $metadata[] = array("Place(s) Discussed:",$places[0]);
+                $metadata[] = array("Time(s) Discussed:",$times[0]);
+                $metadata[] = array("Rights Information:",$rights[0]);
+                $metadata[] = array("Recording Details:",$segments);
+            }
+            else {
+                //config other audio metadata eg: cap
+            }
+        }
+        elseif($typeOfResource == "moving image") {
+            
+        }
+        */
+        
+        $output .= theme_table(null,$metadata);
+    }
+    return $output;
     
 }
